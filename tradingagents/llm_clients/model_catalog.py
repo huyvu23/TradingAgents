@@ -124,13 +124,18 @@ MODEL_OPTIONS: ProviderModeOptions = {
     },
     "google": {
         "quick": [
+            ("Gemini 4 Argon (High) - Google AI Ultra flagship", "gemini-4-argon-high"),
+            ("Gemini 4 Argon (Medium) - Fast frontier reasoning", "gemini-4-argon-medium"),
             ("Gemini 3.8 Flash - Most capable Flash", "gemini-3.8-flash"),
+            ("Gemini 3.8 Flash (High) - High thinking Flash", "gemini-3.8-flash-high"),
             ("Gemini 3.5 Flash Lite - Fast and cost-efficient", "gemini-3.5-flash-lite"),
             ("Gemini 3.1 Flash Lite - Most cost-efficient", "gemini-3.1-flash-lite"),
             ("Custom model ID", "custom"),
         ],
         "deep": [
+            ("Gemini 4 Argon (High) - Google AI Ultra flagship", "gemini-4-argon-high"),
             ("Gemini 3.8 Flash - Most capable Flash, 1M context", "gemini-3.8-flash"),
+            ("Gemini 3.8 Flash (High) - High thinking Flash, 1M context", "gemini-3.8-flash-high"),
             ("Gemini 3.1 Pro - Reasoning-first, complex workflows (preview)", "gemini-3.1-pro-preview"),
             ("Gemini 3.5 Flash - Previous Flash, strong agentic + coding", "gemini-3.5-flash"),
             ("Custom model ID", "custom"),

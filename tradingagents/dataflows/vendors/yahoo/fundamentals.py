@@ -10,6 +10,10 @@ from tradingagents.dataflows.date_window import (
 from tradingagents.dataflows.errors import VendorUnavailableError
 from tradingagents.dataflows.net import vendor_reachable
 from tradingagents.dataflows.symbols import normalize_symbol
+from tradingagents.dataflows.vendors.vn_market import (
+    get_vn_fundamentals_enrichment,
+    is_vn_ticker,
+)
 from tradingagents.dataflows.vendors.yahoo.common import (
     YAHOO_HOST,
     raise_for_empty,
@@ -24,7 +28,7 @@ def get_fundamentals(
     ticker: Annotated[str, "ticker symbol of the company"],
     as_of_date: Annotated[str, "analysis date in YYYY-MM-DD format"] = None
 ):
-    """Get company fundamentals overview from yfinance.
+    """Get company fundamentals overview from yfinance (enriched with local Vietnam data for ``.VN``).
 
     ``Ticker.info`` is a present-day snapshot with no historical vintage, so a
     past ``as_of_date`` withholds it through the shared point-in-time guard
@@ -38,9 +42,16 @@ def get_fundamentals(
     if withheld:
         return withheld
 
-    info = yf_retry(lambda: yf.Ticker(canonical).info)
-    if not info:
+    try:
+        info = yf_retry(lambda: yf.Ticker(canonical).info)
+    except Exception:
+        if not is_vn_ticker(canonical):
+            raise
+        info = {}
+    vn_enrichment = get_vn_fundamentals_enrichment(canonical, as_of_date) if is_vn_ticker(canonical) else ""
+    if not info and not vn_enrichment:
         raise_for_empty(ticker, canonical, "fundamentals")
+    info = info or {}
 
     # Yahoo gives these two in percent (dividendYield 0.41 is 0.41%; debtToEquity
     # 78.4 is 78.4%, a ratio of 0.78) but the margins and returns as fractions,
@@ -98,10 +109,13 @@ def get_fundamentals(
     # unknown symbols, so `info` is truthy but every field is empty. Treat
     # "no usable fields" as no data rather than emitting a bare header the
     # agent might fabricate around.
-    if not lines:
+    if not lines and not vn_enrichment:
         raise_for_empty(ticker, canonical, "fundamental fields")
 
-    return f"# Company Fundamentals for {canonical}\n\n" + "\n".join(lines)
+    out = f"# Company Fundamentals for {canonical}\n\n" + "\n".join(lines) if lines else f"# Company Fundamentals for {canonical}"
+    if vn_enrichment:
+        out += "\n\n" + vn_enrichment
+    return out
 
 
 def _statement(ticker, freq, as_of_date, title, quarterly_attr, annual_attr) -> str:

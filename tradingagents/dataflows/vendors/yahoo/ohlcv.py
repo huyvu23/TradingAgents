@@ -8,6 +8,7 @@ from tradingagents.dataflows.config import get_config
 from tradingagents.dataflows.errors import NoMarketDataError
 from tradingagents.dataflows.files import replace_file
 from tradingagents.dataflows.symbols import normalize_symbol, safe_ticker_component
+from tradingagents.dataflows.vendors.vn_market import get_vn_ohlcv_df, is_vn_ticker
 from tradingagents.dataflows.vendors.yahoo.common import raise_for_empty, yf_retry
 
 logger = logging.getLogger(__name__)
@@ -209,15 +210,23 @@ def load_ohlcv(symbol: str, as_of_date: str, fill_gaps: bool = True) -> pd.DataF
     if data is None:
         # yf.download catches every error, a rate limit included, and returns
         # an empty frame. Ticker.history raises the rate limit, so it is retried.
-        downloaded = yf_retry(lambda: yf.Ticker(canonical).history(
-            start=start_str,
-            end=end_str,
-            auto_adjust=True,
-            actions=False,
-        ))
+        try:
+            downloaded = yf_retry(lambda: yf.Ticker(canonical).history(
+                start=start_str,
+                end=end_str,
+                auto_adjust=True,
+                actions=False,
+            ))
+        except Exception:
+            if not is_vn_ticker(canonical):
+                raise
+            downloaded = None
+        if downloaded is not None:
+            downloaded = _ensure_date_column(downloaded.reset_index())
+        if (downloaded is None or downloaded.empty or "Close" not in downloaded.columns) and is_vn_ticker(canonical):
+            downloaded = get_vn_ohlcv_df(canonical, start_str, end_str)
         if downloaded is None:
             raise_for_empty(symbol, canonical, "price rows")
-        downloaded = _ensure_date_column(downloaded.reset_index())
         # Only cache real data — never persist an empty frame.
         if downloaded.empty or "Close" not in downloaded.columns:
             raise_for_empty(symbol, canonical, "price rows")
@@ -255,5 +264,3 @@ def load_ohlcv(symbol: str, as_of_date: str, fill_gaps: bool = True) -> pd.DataF
     _assert_ohlcv_not_stale(data, as_of_date, symbol, canonical)
 
     return data
-
-

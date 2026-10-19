@@ -10,6 +10,11 @@ from tradingagents.dataflows.config import get_config
 from tradingagents.dataflows.date_window import coverage_gap, in_window
 from tradingagents.dataflows.errors import VendorUnavailableError
 from tradingagents.dataflows.symbols import normalize_symbol
+from tradingagents.dataflows.vendors.vn_market import (
+    get_vn_global_news_articles,
+    get_vn_news,
+    is_vn_ticker,
+)
 from tradingagents.dataflows.vendors.yahoo.common import yf_retry
 
 
@@ -89,13 +94,12 @@ def get_news_yfinance(
     start_date: str,
     end_date: str,
 ) -> str:
-    """News about ``ticker`` published in the window, from Yahoo Finance.
+    """News about ``ticker`` published in the window, from Yahoo Finance (or Google News VN for ``.VN``).
 
     The symbol's quote feed comes first. When it is empty, Yahoo search serves
-    the articles tagged with the symbol; when it has none, or neither answers,
-    Yahoo news is unavailable, which is not an absence of news, and a configured
-    next vendor is tried. Search results are a sample, so finding none in the
-    window never reads as "no news".
+    the articles tagged with the symbol; for ``.VN`` listings (which Yahoo does
+    not tag), Google News RSS Vietnam provides date-filtered Vietnamese financial
+    news and macroeconomic headlines.
     """
     article_limit = get_config()["news_article_limit"]
     # Query Yahoo with the canonical symbol, like every other yfinance path —
@@ -104,6 +108,21 @@ def get_news_yfinance(
     canonical = normalize_symbol(ticker)
     resolved = "" if canonical == ticker else f" (resolved to {canonical})"
     subject = f"news for {ticker}{resolved}"
+
+    if is_vn_ticker(canonical):
+        vn_articles = get_vn_news(canonical, start_date, end_date, limit=article_limit)
+        vn_macro = get_vn_global_news_articles(end_date, look_back_days=7, limit=6)
+        if vn_articles or vn_macro:
+            body = ""
+            if vn_articles:
+                body += _format_articles(vn_articles)
+            if vn_macro:
+                body += (
+                    "## Vietnam Macroeconomic & Market Context (VN-Index / SBV / FX / Foreign Flow):\n\n"
+                    + _format_articles(vn_macro)
+                )
+            return f"## {ticker}{resolved} News, from {start_date} to {end_date}:\n\n{body}"
+
     feed = yf_retry(lambda: yf.Ticker(canonical).get_news(count=article_limit)) or []
     articles = [_extract_article_data(a) for a in feed]
     if not feed:
@@ -189,6 +208,23 @@ def get_global_news_yfinance(
             break
 
     news_str = _format_articles(in_window_news[:limit])
+
+    # When output_language is Vietnamese, enrich global macro news with
+    # Vietnam-specific macroeconomic headlines (SBV, USD/VND, VN-Index, FDI, FTSE/MSCI).
+    lang = str(config.get("output_language", "")).strip().lower()
+    if lang in {"vietnamese", "tiếng việt", "vi"}:
+        vn_macro = get_vn_global_news_articles(
+            as_of_date,
+            look_back_days=look_back_days,
+            limit=limit,
+            queries=config.get("vn_global_news_queries"),
+        )
+        if vn_macro:
+            vn_str = _format_articles(vn_macro[:limit])
+            news_str = (
+                (news_str + "\n" if news_str else "")
+                + f"## Vietnam Macroeconomic & Market News, from {start_date} to {as_of_date}:\n\n{vn_str}"
+            )
 
     # Nothing fell inside the window -> say so rather than return an
     # empty-bodied report (#993).

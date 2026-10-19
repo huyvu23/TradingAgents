@@ -24,6 +24,10 @@ from urllib.request import Request, urlopen
 
 from tradingagents.dataflows.date_window import coverage_gap, in_window
 from tradingagents.dataflows.symbols import crypto_base
+from tradingagents.dataflows.vendors.vn_market import (
+    fetch_vn_market_sentiment,
+    is_vn_ticker,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +98,11 @@ def fetch_stocktwits_messages(
     symbol has no messages, or the response shape is unexpected — the
     caller never has to special-case None or exceptions.
     """
+    if is_vn_ticker(ticker):
+        return fetch_vn_market_sentiment(
+            ticker, limit=limit, start_date=start_date, end_date=end_date
+        )
+
     url = _API.format(ticker=_stocktwits_symbol(ticker))
     req = Request(url, headers={"User-Agent": _UA, "Accept": "application/json"})
     try:

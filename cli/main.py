@@ -76,6 +76,31 @@ def analyze(
     """
     if ctx.invoked_subcommand is not None:
         return
+    _execute_analysis(
+        checkpoint=checkpoint,
+        clear_checkpoints=clear_checkpoints,
+        portfolio=portfolio,
+        ticker=ticker,
+        date=date,
+        analysts=analysts,
+        save=save,
+        show=show,
+        html=html,
+    )
+
+
+def _execute_analysis(
+    *,
+    checkpoint: bool | None = None,
+    clear_checkpoints: bool = False,
+    portfolio: str | None = None,
+    ticker: str | None = None,
+    date: str | None = None,
+    analysts: str | None = None,
+    save: bool | None = None,
+    show: bool | None = None,
+    html: bool | None = None,
+):
     if clear_checkpoints:
         from tradingagents.graph.checkpointer import clear_all_checkpoints
         n = clear_all_checkpoints(DEFAULT_CONFIG["data_cache_dir"])
@@ -102,6 +127,57 @@ def analyze(
             err=True,
         )
         raise typer.Exit(code=1) from None
+
+
+@app.command("analyze")
+def analyze_cmd(
+    ticker_arg: Annotated[
+        str | None,
+        typer.Argument(help="Ticker to analyze, e.g. MSN.VN, PVS.VN, NVDA"),
+    ] = None,
+    ticker: str = typer.Option(None, "--ticker", "-t", help="Ticker to analyze, e.g. MSN.VN or NVDA; skips the prompt"),
+    date: str = typer.Option(None, "--date", "-d", help="Analysis date, YYYY-MM-DD; skips the prompt"),
+    analysts: str = typer.Option(
+        None, "--analysts", help="Comma-separated analysts, e.g. market,news; skips the prompt"
+    ),
+    checkpoint: bool | None = typer.Option(
+        None,
+        "--checkpoint/--no-checkpoint",
+        help="Enable/disable checkpoint-resume.",
+    ),
+    clear_checkpoints: bool = typer.Option(
+        False,
+        "--clear-checkpoints",
+        help="Delete all saved checkpoints before running (force fresh start).",
+    ),
+    portfolio: str = typer.Option(
+        None,
+        "--portfolio",
+        help="JSON file with current holdings and cash.",
+    ),
+    save: bool | None = typer.Option(
+        None, "--save/--no-save", help="Save the report under results_dir without asking"
+    ),
+    show: bool | None = typer.Option(
+        None, "--show/--no-show", help="Show the full report at the end without asking"
+    ),
+    html: bool | None = typer.Option(
+        None, "--html/--no-html",
+        help="Save the report as one HTML page too, complete_report.html, without asking (default: yes)",
+    ),
+):
+    """Run an analysis for a ticker (e.g. `tradingagents analyze MSN.VN`)."""
+    _execute_analysis(
+        checkpoint=checkpoint,
+        clear_checkpoints=clear_checkpoints,
+        portfolio=portfolio,
+        ticker=ticker or ticker_arg,
+        date=date,
+        analysts=analysts,
+        save=save,
+        show=show,
+        html=html,
+    )
 
 
 @app.command()

@@ -200,6 +200,7 @@ def build_default_config() -> dict:
             ".SS":  "000001.SS",   # Shanghai (SSE Composite)
             ".SZ":  "399001.SZ",   # Shenzhen (SZSE Component)
             ".SA":  "^BVSP",       # B3 Brazil (Ibovespa)
+            ".VN":  "E1VFVN30.VN", # Vietnam (HOSE VN30 ETF)
             "":     "SPY",         # default for US-listed tickers (no suffix)
         },
 

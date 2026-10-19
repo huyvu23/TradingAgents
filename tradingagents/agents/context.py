@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from tradingagents.dataflows.date_window import is_historical
+from tradingagents.dataflows.vendors.vn_market import get_vn_company_profile, is_vn_ticker
 from tradingagents.dataflows.vendors.yahoo.fundamentals import get_company_profile
 
 logger = logging.getLogger(__name__)
@@ -86,6 +87,17 @@ def resolve_instrument_identity(ticker: str) -> dict:
 def _identity(ticker: str) -> dict:
     """The vendor's identity fields for ``ticker``; raises if the lookup fails."""
     info = get_company_profile(ticker)
+    if is_vn_ticker(ticker) and not (_clean_identity_value(info.get("longName")) or _clean_identity_value(info.get("shortName"))):
+        vn_info = get_vn_company_profile(ticker)
+        info = {**vn_info, **{k: v for k, v in info.items() if v}}
+    elif is_vn_ticker(ticker):
+        # Enrich exchange/sector from local Vietnam sources when Yahoo omits or uses generic "YHD"/"VN"
+        vn_info = get_vn_company_profile(ticker)
+        if vn_info.get("exchange"):
+            info["exchange"] = vn_info["exchange"]
+        if vn_info.get("longName") and not info.get("longName"):
+            info["longName"] = vn_info["longName"]
+
     identity: dict[str, str] = {}
     company_name = _clean_identity_value(info.get("longName")) or _clean_identity_value(
         info.get("shortName")
@@ -165,6 +177,33 @@ def build_instrument_context(
         context += (
             " Treat it as a crypto asset rather than a company, and do not "
             "assume company fundamentals are available."
+        )
+    elif is_vn_ticker(ticker):
+        ex = (identity.get("exchange") or "").upper()
+        band_note = (
+            "HOSE (±7% daily limit)"
+            if ex == "HOSE"
+            else (
+                "HNX (±10% daily limit)"
+                if ex == "HNX"
+                else (
+                    "UPCoM (±15% daily limit; reference price is prior session's VWAP)"
+                    if ex in {"UPCOM", "UPCoM"}
+                    else "HOSE (±7%), HNX (±10%), or UPCoM (±15%)"
+                )
+            )
+        )
+        context += (
+            f" Vietnam Stock Market (`.VN`) Microstructure & Trading Rules ({band_note}): "
+            "(1) Settlement cycle is **T+2.5** — shares bought on Day T settle in the afternoon of Day T+2 "
+            "(13:00 ICT) and CANNOT be sold on T+0 or T+1; intraday or next-day stop-loss execution on newly "
+            "purchased shares is impossible, so position sizing and entry tranches must account for at least "
+            "2.5 sessions of T+ lock-up risk and potential floor-lock illiquidity (mất thanh khoản giá sàn). "
+            "(2) Daily price fluctuation limits are strictly enforced (HOSE ±7%, HNX ±10%, UPCoM ±15%). "
+            "(3) Standard board lot is **100 shares/order**, quoted in **VND**. "
+            "(4) Pay special attention to **Foreign Investor Net Flow (Giao dịch Khối ngoại)**, "
+            "**Active Buy/Sell Volume (Mua/Bán chủ động)**, SBV monetary policy, USD/VND exchange rate, "
+            "and VN-Index market liquidity."
         )
     return context
 
