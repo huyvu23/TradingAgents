@@ -332,6 +332,14 @@ def get_vn_fundamentals_enrichment(ticker: str, as_of_date: str | None = None) -
         if cleaned:
             lines.append(f"- **{section_label}**: {cleaned}")
 
+    with contextlib.suppress(Exception):
+        from .dnse_mcp import fetch_dnse_mcp_enrichment
+
+        dnse_block = fetch_dnse_mcp_enrichment(ticker)
+        if dnse_block:
+            lines.append("")
+            lines.append(dnse_block)
+
     return "\n".join(lines)
 
 
@@ -432,12 +440,34 @@ def get_vn_news(
     else:
         query = f'"cổ phiếu {base}" OR "{base} chứng khoán"'
 
-    articles = _fetch_google_news_vn_rss(query, start_dt, end_dt, limit=limit)
+    articles: list[dict] = []
+    seen_titles: set[str] = set()
+
+    # Google News RSS ranks by relevance rather than recency, so a wide window
+    # (e.g. 30 days) can crowd out breaking news from the last few days. Fetch
+    # the most recent 7-day slice first, then backfill from the full window.
+    recent_start = max(start_dt, end_dt - timedelta(days=7))
+    if recent_start > start_dt:
+        for art in _fetch_google_news_vn_rss(query, recent_start, end_dt, limit=limit):
+            if art["title"] not in seen_titles:
+                seen_titles.add(art["title"])
+                articles.append(art)
+
+    for art in _fetch_google_news_vn_rss(query, start_dt, end_dt, limit=limit):
+        if art["title"] not in seen_titles:
+            seen_titles.add(art["title"])
+            articles.append(art)
+
     if not articles:
         # Broaden slightly if the strict query had no hits in the window
         fallback_query = f"{base} chứng khoán Việt Nam"
         articles = _fetch_google_news_vn_rss(fallback_query, start_dt, end_dt, limit=limit)
-    return articles
+
+    articles.sort(
+        key=lambda a: a.get("pub_date") or datetime.min.replace(tzinfo=UTC),
+        reverse=True,
+    )
+    return articles[:limit]
 
 
 def get_vn_global_news_articles(
@@ -461,9 +491,12 @@ def get_vn_global_news_articles(
             if art["title"] not in seen_titles:
                 seen_titles.add(art["title"])
                 collected.append(art)
-                if len(collected) >= limit:
-                    return collected
-    return collected
+
+    collected.sort(
+        key=lambda a: a.get("pub_date") or datetime.min.replace(tzinfo=UTC),
+        reverse=True,
+    )
+    return collected[:limit]
 
 
 def fetch_vn_market_sentiment(
